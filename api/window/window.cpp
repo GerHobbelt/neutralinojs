@@ -20,7 +20,7 @@
 #include <windows.h>
 #include <gdiplus.h>
 #pragma comment (lib,"Gdiplus.lib")
-#pragma comment(lib, "WebView2Loader.dll.lib")
+#pragma comment(lib, "WebView2LoaderStatic.lib")
 #endif
 
 #include "lib/json/json.hpp"
