@@ -48,6 +48,7 @@ struct WindowOptions {
     SizeOptions sizeOptions;
     bool fullScreen = false;
     bool alwaysOnTop = false;
+    bool singleInstance = false;
     bool enableInspector = false;
     bool borderless= false;
     bool maximize = false;
