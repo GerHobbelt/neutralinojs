@@ -68,6 +68,17 @@ struct WindowOptions {
     int y = 0;
 };
 
+struct WindowMenuItem {
+  string id;
+  string text;
+  bool disabled = false;
+  bool checked = false;
+  string action = "menuCallback:";
+  string shortcut;
+
+  void (*cb)(struct WindowMenuItem *);
+};
+
 namespace handlers {
 
 void onClose();
@@ -95,7 +106,7 @@ void center(bool useConfigSizes);
 void setAlwaysOnTop(bool onTop);
 void setBorderless();
 bool snapshot(const string &filename);
-bool applyMainMenu(const json &menu);
+void setMainMenu(const json &menu);
 
 void _close(int exitCode);
 

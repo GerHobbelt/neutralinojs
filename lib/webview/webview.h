@@ -71,6 +71,17 @@ using eventHandler_t = std::function<void(int)>;
 static eventHandler_t windowStateChange;
 static int processExitCode = 0;
 
+struct WindowMenuItem {
+  std::string id;
+  std::string text;
+  bool disabled = false;
+  bool checked = false;
+  std::string action = "menuCallback:";
+  std::string shortcut;
+
+  void (*cb)(struct WindowMenuItem *);
+};
+
 } // namespace webview
 
 #if defined(WEBVIEW_GTK)
@@ -256,7 +267,10 @@ public:
     // Initialize webview widget
     m_webview = webkit_web_view_new();
 
-    gtk_container_add(GTK_CONTAINER(m_window), GTK_WIDGET(m_webview));
+    GtkWidget *parentContainer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(parentContainer), GTK_WIDGET(m_webview), true, true, 0);    
+    gtk_container_add(GTK_CONTAINER(m_window), parentContainer);
+
     gtk_widget_grab_focus(GTK_WIDGET(m_webview));
 
     WebKitSettings *settings =
@@ -410,6 +424,17 @@ public:
     class_addProtocol(cls, objc_getProtocol("NSTouchBarProvider"));
     class_addMethod(cls, "applicationShouldTerminateAfterLastWindowClosed:"_sel,
                     (IMP)(+[](id, SEL, id) -> BOOL { return 0; }), "c@:@");
+    class_addMethod(cls, "menuCallback:"_sel,
+      (IMP)(+[](id, SEL, id sender) -> void { 
+      WindowMenuItem *m = ((WindowMenuItem *(*)(id, SEL))objc_msgSend)(
+          ((id (*)(id, SEL))objc_msgSend)(sender, "representedObject"_sel),
+          "pointerValue"_sel);
+
+      if (m && m->cb) {
+        m->cb(m);
+      }
+
+    }), "v@:@");
 
     objc_registerClassPair(cls);
 
@@ -681,6 +706,10 @@ using browser_engine = cocoa_wkwebview_engine;
 
 #include "darkmode.h"
 
+#define WM_WINDOW_PASS_MENU_REFS (WM_USER + 3)
+#define WM_WINDOW_DELETE_MENU_REFS (WM_USER + 4)
+#define ID_MENU_FIRST 20000
+
 namespace webview {
 
 // Common interface for EdgeHTML and Edge/Chromium
@@ -928,6 +957,7 @@ public:
           (WNDPROC)(+[](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) -> int {
             auto w = (win32_edge_engine *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
             static HMENU menuRef;
+            static std::vector<HMENU> menuRefs;
             switch (msg) {
             case WM_SIZE:
               w->m_browser->resize(hwnd);
@@ -953,6 +983,12 @@ public:
             case WM_TRAY_PASS_MENU_REF:
               menuRef = (HMENU) wp;
               break;
+            case WM_WINDOW_PASS_MENU_REFS:
+              menuRefs.push_back((HMENU) wp);
+              break;
+            case WM_WINDOW_DELETE_MENU_REFS:
+              menuRefs.clear();
+              break;
             case WM_TRAY_CALLBACK_MESSAGE:
               if (lp == WM_LBUTTONUP || lp == WM_RBUTTONUP) {
                 POINT p;
@@ -965,7 +1001,23 @@ public:
               }
               break;
             case WM_COMMAND:
-              if (wp >= ID_TRAY_FIRST) {
+              if (wp >= ID_MENU_FIRST) {
+                for(const HMENU itMenuRef: menuRefs) {
+                  MENUITEMINFO item;
+                  memset(&item, 0, sizeof(item));
+                  item.cbSize = sizeof(MENUITEMINFO);
+                  item.fMask = MIIM_ID | MIIM_DATA;
+                  if (GetMenuItemInfo(itMenuRef, wp, false, &item)) {
+                    WindowMenuItem *menu = (WindowMenuItem *)item.dwItemData;
+                    if (menu != nullptr && menu->cb != nullptr) {
+                      menu->cb(menu);
+                    }
+                    break;
+                  }
+                }
+                return 0;
+              }
+              else if (wp >= ID_TRAY_FIRST) {
                 MENUITEMINFO item;
                 memset(&item, 0, sizeof(item));
                 item.cbSize = sizeof(MENUITEMINFO);

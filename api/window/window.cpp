@@ -56,12 +56,16 @@ webview::webview *nativeWindow;
 #if defined(__linux__) || defined(__FreeBSD__)
 bool isGtkWindowFullScreen = false;
 bool isGtkWindowMinimized = false;
+GtkWidget *menuContainer;
 
 #elif defined(_WIN32)
+#define ID_MENU_FIRST 20000;
 bool isWinWindowFullScreen = false;
 DWORD savedStyle;
 DWORD savedStyleX;
 RECT savedRect;
+HMENU windowMenu;
+int windowMenuItemId = ID_MENU_FIRST;
 #endif
 
 window::WindowOptions windowProps;
@@ -253,6 +257,231 @@ bool __loadSavedWindowProps() {
     }
     return true;
 }
+
+void __handleMainMenuItem(window::WindowMenuItem *item) {
+    (void)item;
+    json eventData;
+    eventData["id"] = item->id;
+    eventData["text"] = item->text;
+    eventData["isChecked"] = item->checked;
+    eventData["isDisabled"] = item->disabled;
+    events::dispatch("mainMenuItemClicked", eventData);
+}
+
+#if defined(_WIN32)
+HMENU __createMenu(const json &menu, bool root) {
+    HMENU hMenu = root ? CreateMenu() : CreatePopupMenu();
+    for(const auto &jMenuItem : menu) {
+        window::WindowMenuItem *menuItem = new window::WindowMenuItem;
+
+        if(helpers::hasField(jMenuItem, "id")) {
+            menuItem->id = jMenuItem["id"].get<string>();
+        }
+
+        if(helpers::hasField(jMenuItem, "text")) {
+            menuItem->text = jMenuItem["text"].get<string>();
+        } 
+
+        if(helpers::hasField(jMenuItem, "isDisabled")) {
+            menuItem->disabled = jMenuItem["isDisabled"].get<bool>();
+        }
+
+        if(helpers::hasField(jMenuItem, "isChecked")) {
+            menuItem->checked = jMenuItem["isChecked"].get<bool>();
+        }  
+
+        if(helpers::hasField(jMenuItem, "shortcut")) {
+            menuItem->shortcut = jMenuItem["shortcut"].get<string>();
+            menuItem->text += "\t\t" + menuItem->shortcut;
+        }
+
+        menuItem->cb = __handleMainMenuItem;
+
+        if(menuItem->text == "-") {
+            InsertMenu(hMenu, windowMenuItemId, MF_SEPARATOR, 1, L"");
+        } 
+        else {
+            MENUITEMINFO item;
+            memset(&item, 0, sizeof(item));
+            item.cbSize = sizeof(MENUITEMINFO);
+            item.fMask = MIIM_ID | MIIM_TYPE | MIIM_STATE | MIIM_DATA;
+            item.fType = 0;
+            item.fState = 0;
+            if (helpers::hasField(jMenuItem, "menuItems")) {
+                item.fMask = item.fMask | MIIM_SUBMENU;
+                item.hSubMenu = __createMenu(jMenuItem["menuItems"], false);
+                SendMessage(windowHandle, WM_WINDOW_PASS_MENU_REFS, (WPARAM)item.hSubMenu, 0);
+            }
+            if(menuItem->disabled) {
+                item.fState |= MFS_DISABLED;
+            }
+            if (menuItem->checked) {
+                item.fState |= MFS_CHECKED;
+            }
+            item.wID = windowMenuItemId;
+            wstring wtext = helpers::str2wstr(menuItem->text);
+            item.dwTypeData = (LPWSTR)wtext.data();
+            item.dwItemData = (ULONG_PTR)menuItem;
+
+            InsertMenuItem(hMenu, windowMenuItemId, 1, &item);
+
+            windowMenuItemId++;
+        }   
+    }
+
+    return hMenu;
+}
+#elif defined(__APPLE__)
+id __createMenu(const json &menu) {
+    id nsMenu = ((id (*)(id, SEL))objc_msgSend)("NSMenu"_cls, "new"_sel);
+                ((id (*)(id, SEL, id))objc_msgSend)(
+                    nsMenu,
+                    "initWithTitle:"_sel,
+                    ((id (*)(id, SEL, const char *))objc_msgSend)("NSString"_cls, "stringWithUTF8String:"_sel, "")
+                );
+
+    ((id (*)(id, SEL))objc_msgSend)(nsMenu, "autorelease"_sel);
+    ((id (*)(id, SEL, bool))objc_msgSend)(nsMenu, "setAutoenablesItems:"_sel, false);
+    for(const auto &jMenuItem : menu) {
+        window::WindowMenuItem *menuItem = new window::WindowMenuItem;
+
+        if(helpers::hasField(jMenuItem, "id")) {
+            menuItem->id = jMenuItem["id"].get<string>();
+        }
+
+        if(helpers::hasField(jMenuItem, "text")) {
+            menuItem->text = jMenuItem["text"].get<string>();
+        } 
+
+        if(helpers::hasField(jMenuItem, "isDisabled")) {
+            menuItem->disabled = jMenuItem["isDisabled"].get<bool>();
+        }
+
+        if(helpers::hasField(jMenuItem, "isChecked")) {
+            menuItem->checked = jMenuItem["isChecked"].get<bool>();
+        }  
+
+        if(helpers::hasField(jMenuItem, "action")) {
+            menuItem->action = jMenuItem["action"].get<string>();
+        }
+
+        if(helpers::hasField(jMenuItem, "shortcut")) {
+            menuItem->shortcut = jMenuItem["shortcut"].get<string>();
+        } 
+
+        menuItem->cb = __handleMainMenuItem;
+
+        if(menuItem->text == "-") {
+            id separatorItem = ((id (*)(id, SEL))objc_msgSend)(
+                    "NSMenuItem"_cls,
+                    "separatorItem"_sel);
+
+            ((id (*)(id, SEL, id))objc_msgSend)(nsMenu, "addItem:"_sel, separatorItem);
+        } 
+        else {
+            id nsMenuItem = ((id (*)(id, SEL))objc_msgSend)("NSMenuItem"_cls, "alloc"_sel);
+
+            ((id (*)(id, SEL))objc_msgSend)(nsMenuItem, "autorelease"_sel);
+
+            ((id (*)(id, SEL, id, SEL, id))objc_msgSend)(
+                nsMenuItem,
+                "initWithTitle:action:keyEquivalent:"_sel,
+                ((id (*)(id, SEL, const char *))objc_msgSend)("NSString"_cls, "stringWithUTF8String:"_sel, menuItem->text.c_str()),
+                sel_registerName(menuItem->action.c_str()),
+                ((id (*)(id, SEL, const char *))objc_msgSend)("NSString"_cls, "stringWithUTF8String:"_sel, menuItem->shortcut.c_str()));
+
+            ((id (*)(id, SEL, bool))objc_msgSend)(nsMenuItem, "setEnabled:"_sel, !menuItem->disabled);
+            ((id (*)(id, SEL, bool))objc_msgSend)(nsMenuItem, "setState:"_sel, menuItem->checked);
+
+            ((id (*)(id, SEL, id))objc_msgSend)(
+                nsMenuItem,
+                "setRepresentedObject:"_sel,
+                ((id (*)(id, SEL, void*))objc_msgSend)("NSValue"_cls, "valueWithPointer:"_sel, menuItem));
+
+            ((id (*)(id, SEL, id))objc_msgSend)(nsMenu, "addItem:"_sel, nsMenuItem);
+
+            if (helpers::hasField(jMenuItem, "menuItems")) {
+                id nsSubmenu = __createMenu(jMenuItem["menuItems"]);
+                ((id (*)(id, SEL, id, id))objc_msgSend)(
+                    nsMenu,
+                    "setSubmenu:forItem:"_sel,
+                    nsSubmenu,
+                    nsMenuItem);
+                ((id (*)(id, SEL, id))objc_msgSend)(
+                    nsSubmenu,
+                    "setTitle:"_sel,
+                    ((id (*)(id, SEL, const char *))objc_msgSend)("NSString"_cls, "stringWithUTF8String:"_sel, menuItem->text.c_str())
+                );
+            }
+        }   
+    }
+
+    return nsMenu;
+}
+#elif defined(__linux__) || defined(__FreeBSD__)
+static void __menuCallback(GtkMenuItem *item, gpointer data) {
+  (void)item;
+  window::WindowMenuItem *menuItem = (window::WindowMenuItem *)data;
+  menuItem->cb(menuItem);
+}
+
+GtkMenuShell* __createMenu(const json &menu, bool root) {
+    GtkMenuShell *gMenu = root ? (GtkMenuShell *)gtk_menu_bar_new() : (GtkMenuShell *)gtk_menu_new() ;
+    for(const auto &jMenuItem : menu) {
+        window::WindowMenuItem *menuItem = new window::WindowMenuItem;
+
+        if(helpers::hasField(jMenuItem, "id")) {
+            menuItem->id = jMenuItem["id"].get<string>();
+        }
+
+        if(helpers::hasField(jMenuItem, "text")) {
+            menuItem->text = jMenuItem["text"].get<string>();
+        } 
+
+        if(helpers::hasField(jMenuItem, "isDisabled")) {
+            menuItem->disabled = jMenuItem["isDisabled"].get<bool>();
+        }
+
+        if(helpers::hasField(jMenuItem, "isChecked")) {
+            menuItem->checked = jMenuItem["isChecked"].get<bool>();
+        }  
+
+        if(helpers::hasField(jMenuItem, "shortcut")) {
+            menuItem->shortcut = jMenuItem["shortcut"].get<string>();
+            menuItem->text += "\t\t" + menuItem->shortcut;
+        }
+
+        menuItem->cb = __handleMainMenuItem;
+
+        GtkWidget *item;
+        if(menuItem->text == "-") {
+            item = gtk_separator_menu_item_new();
+        } 
+        else {
+            if (helpers::hasField(jMenuItem, "menuItems")) {
+                item = gtk_menu_item_new_with_label(menuItem->text.c_str());
+                gtk_menu_item_set_submenu(GTK_MENU_ITEM(item),
+                                        GTK_WIDGET(__createMenu(jMenuItem["menuItems"], false)));
+            } 
+            else if(menuItem->checked) {
+                item = gtk_check_menu_item_new_with_label(menuItem->text.c_str());
+                gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item), menuItem->checked);
+            } 
+            else {
+                item = gtk_menu_item_new_with_label(menuItem->text.c_str());
+            }
+            gtk_widget_set_sensitive(item, !menuItem->disabled);
+            if (menuItem->cb) {
+                g_signal_connect(item, "activate", G_CALLBACK(__menuCallback), menuItem);
+            }
+        }
+        gtk_widget_show(item);
+        gtk_menu_shell_append(gMenu, item);   
+    }
+
+    return gMenu;
+}
+#endif
 
 void _close(int exitCode) {
     if(nativeWindow) {
@@ -635,6 +864,41 @@ bool snapshot(const string &filename) {
     GdiplusShutdown(gdiplusToken);
 
     return status;
+    #endif
+}
+
+void setMainMenu(const json &menu) {
+    #if defined(_WIN32)
+    SendMessage(windowHandle, WM_WINDOW_DELETE_MENU_REFS, 0, 0);
+    HMENU prevMenu = windowMenu;
+    windowMenuItemId = ID_MENU_FIRST;
+    windowMenu = __createMenu(menu, true);
+    SetMenu(windowHandle, windowMenu);
+
+    if(prevMenu) {
+        DestroyMenu(prevMenu);
+    }
+
+    #elif defined(__APPLE__)
+    id app = ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
+                                            "sharedApplication"_sel);
+    ((void (*)(id, SEL, id))objc_msgSend)(app, "mainMenu"_sel, nullptr);
+    ((void (*)(id, SEL, id))objc_msgSend)(app, "setMainMenu:"_sel, __createMenu(menu));
+
+    #elif defined(__linux__) || defined(__FreeBSD__)
+    if(menuContainer) {
+        gtk_widget_destroy(menuContainer);
+    }
+
+    menuContainer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkMenuShell *windowMenu = __createMenu(menu, true);
+    GtkWidget *parentContainer = gtk_bin_get_child(GTK_BIN(windowHandle));
+
+    gtk_box_pack_start(GTK_BOX(parentContainer), menuContainer, false, false, 0);
+    gtk_box_reorder_child(GTK_BOX(parentContainer), menuContainer, 0);
+    gtk_box_pack_start(GTK_BOX(menuContainer), GTK_WIDGET(windowMenu), false, false, 0);
+    gtk_widget_show_all(menuContainer);
+
     #endif
 }
 
@@ -1068,80 +1332,10 @@ json snapshot(const json &input) {
     return output;
 }
 
-bool applyMainMenu(const json &menu) {
-    
-    #if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
-    auto mainMenuItemClicked = [](std::string itemId) {
-        json eventPayload;
-        eventPayload["id"] = itemId;
-        Neutralino.events.dispatch("mainMenuItemClicked", eventPayload);
-    };
-    #endif
-
-    #if defined(_WIN32)
-    HMENU hMenu = CreateMenu();
-    for (const auto &menuItem : menu) {
-        HMENU hSubMenu = CreatePopupMenu();
-        for (const auto &item : menuItem["menuItems"]) {
-            if (item["text"] == "-") {
-                AppendMenu(hSubMenu, MF_SEPARATOR, 0, NULL);
-            } else {
-                AppendMenu(hSubMenu, MF_STRING, item["id"].get<int>(), item["text"].get<std::string>().c_str());
-            }
-        }
-        AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hSubMenu, menuItem["text"].get<std::string>().c_str());
-    }
-    SetMenu(windowHandle, hMenu);
-    return true;
-
-    #elif defined(__APPLE__)
-    id mainMenu = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSMenu"), sel_getUid("alloc"));
-    mainMenu = ((id (*)(id, SEL))objc_msgSend)(mainMenu, sel_getUid("init"));
-
-    for (const auto &menuItem : menu) {
-        id menuItemObj = ((id (*)(id, SEL, id))objc_msgSend)(mainMenu, sel_getUid("addItemWithTitle:action:keyEquivalent:"), menuItem["text"].get<std::string>().c_str(), NULL, @"");
-        id submenu = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSMenu"), sel_getUid("alloc"));
-        submenu = ((id (*)(id, SEL))objc_msgSend)(submenu, sel_getUid("init"));
-
-        for (const auto &item : menuItem["menuItems"]) {
-            if (item["text"] == "-") {
-                ((void (*)(id, SEL, id))objc_msgSend)(submenu, sel_getUid("addItem:"), ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSMenuItem"), sel_getUid("separatorItem")));
-            } else {
-                id subItem = ((id (*)(id, SEL, id, SEL, id))objc_msgSend)((id)objc_getClass("NSMenuItem"), sel_getUid("alloc"), item["text"].get<std::string>().c_str(), sel_getUid("menuAction:"), @"");
-                ((void (*)(id, SEL, id))objc_msgSend)(submenu, sel_getUid("addItem:"), subItem);
-            }
-        }
-        ((void (*)(id, SEL, id))objc_msgSend)(menuItemObj, sel_getUid("setSubmenu:"), submenu);
-    }
-    ((void (*)(id, SEL, id))objc_msgSend)(((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSApplication"), sel_getUid("sharedApplication")), sel_getUid("setMainMenu:"), mainMenu);
-
-    // lambda
-    auto menuAction = [](id self, SEL _cmd) {
-        id menuItem = self;
-        const char *menuId = ((const char *(*)(id, SEL))objc_msgSend)(menuItem, sel_getUid("identifier"));
-        json eventPayload;
-        eventPayload["id"] = std::string(menuId);
-        Neutralino.events.dispatch("mainMenuItemClicked", eventPayload);
-    };
-
-    return true;
-    #endif
-}
-
 json setMainMenu(const json &input) {
     json output;
 
-    if (!helpers::hasField(input, "menu")) {
-        output["error"] = "Missing required field: menu";
-        return output;
-    }
-
-    json menu = input["menu"];
-
-    if (!applyMainMenu(menu)) {
-        output["error"] = "Failed to set the menu";
-        return output;
-    }
+    window::setMainMenu(input);
 
     output["success"] = true;
     return output;
