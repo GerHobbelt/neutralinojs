@@ -10,15 +10,13 @@ jobs:
 
     container:
       image: ubuntu:20.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        GIT_DISCOVERY_ACROSS_FILESYSTEM: 1
         
     steps:
-    - name: Checkout 
-      uses: actions/checkout@v3
-      
     - name: Configure
       run: |
-        export DEBIAN_FRONTEND=noninteractive
-        export GIT_DISCOVERY_ACROSS_FILESYSTEM=1
         apt-get update
         apt-get install -y -f \
         g++ \
@@ -27,8 +25,13 @@ jobs:
         libwebkit2gtk-4.0-37 \
         libwebkit2gtk-4.0-dev
         
+    - name: Checkout 
+      uses: actions/checkout@v3
+        
     - name: Build
-      run: ./scripts/bz.py --verbose
+      run: |
+        git config --global --add safe.directory $GITHUB_WORKSPACE
+        ./scripts/bz.py
       
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4.4.0
