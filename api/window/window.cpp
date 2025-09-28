@@ -31,6 +31,8 @@
 #pragma comment(lib, "Gdiplus.lib")
 #pragma comment(lib, "WebView2LoaderStatic.lib")
 #include "webview2.h"
+#include <wrl.h>
+#include <ShlObj_core.h>
 #endif
 
 #include "lib/json/json.hpp"
@@ -545,8 +547,8 @@ void __injectScript() {
 bool __createWindow() {
     savedState = windowProps.useSavedState && __loadSavedWindowProps();
 
-    nativeWindow = new webview::webview(windowProps.enableInspector, nullptr, windowProps.transparent,
-        windowProps.webviewArgs);
+    nativeWindow = new webview::webview(windowProps.enableInspector, windowProps.openInspectorOnStartup, 
+        nullptr, windowProps.transparent, windowProps.webviewArgs);
     
     if(nativeWindow->get_init_code() == 1) {
         return false;
@@ -613,6 +615,9 @@ bool __createWindow() {
 
     if(windowProps.borderless)
         window::setBorderless();
+
+    if(windowProps.skipTaskbar)
+        window::setSkipTaskbar(true);
 
     nativeWindow->navigate(windowProps.url);
 
@@ -956,6 +961,28 @@ void setBorderless() {
     #endif
 }
 
+void setSkipTaskbar(bool skip) {
+    #if defined(__linux__) || defined(__FreeBSD__)
+    gdk_window_set_skip_taskbar_hint(gtk_widget_get_window(windowHandle), skip);
+    #elif defined(__APPLE__)
+    id app = ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
+                                            "sharedApplication"_sel);
+    ((void (*)(id, SEL, long))objc_msgSend)(
+        app, "setActivationPolicy:"_sel, skip ? NSApplicationActivationPolicyAccessory : NSApplicationActivationPolicyRegular);
+    #elif defined(_WIN32)
+    Microsoft::WRL::ComPtr<ITaskbarList> taskbar;
+    if(FAILED(CoCreateInstance(CLSID_TaskbarList, nullptr,
+                                    CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&taskbar))) ||
+        FAILED(taskbar->HrInit()))
+        return;
+    if(skip)
+        taskbar->DeleteTab(windowHandle);
+    else
+        taskbar->AddTab(windowHandle);
+    #endif
+}
+
 bool snapshot(const string &filename) {
     #if defined(__linux__) || defined(__FreeBSD__)
     int width, height, x, y;
@@ -1088,6 +1115,9 @@ bool init(const json &windowOptions) {
     if(helpers::hasField(windowOptions, "enableInspector"))
         windowProps.enableInspector = windowOptions["enableInspector"].get<bool>();
 
+    if(helpers::hasField(windowOptions, "openInspectorOnStartup"))
+        windowProps.openInspectorOnStartup = windowOptions["openInspectorOnStartup"].get<bool>();
+
     if(helpers::hasField(windowOptions, "borderless"))
         windowProps.borderless = windowOptions["borderless"].get<bool>();
 
@@ -1117,6 +1147,9 @@ bool init(const json &windowOptions) {
 
     if(helpers::hasField(windowOptions, "webviewArgs"))
         windowProps.webviewArgs = windowOptions["webviewArgs"].get<string>();
+
+    if(helpers::hasField(windowOptions, "skipTaskbar"))
+        windowProps.skipTaskbar = windowOptions["skipTaskbar"].get<bool>();
 
     if(!__createWindow()) {
         return false;
@@ -1276,7 +1309,7 @@ json focus(const json &input) {
 json setIcon(const json &input) {
     json output;
     if(!helpers::hasRequiredFields(input, {"icon"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("icon");
         return output;
     }
     string icon = input["icon"].get<string>();
@@ -1287,8 +1320,9 @@ json setIcon(const json &input) {
 
 json move(const json &input) {
     json output;
-    if(!helpers::hasRequiredFields(input, {"x", "y"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"x", "y"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
         return output;
     }
     int x = input["x"].get<int>();
@@ -1350,7 +1384,7 @@ json getPosition(const json &input) {
 json snapshot(const json &input) {
     json output;
     if (!helpers::hasRequiredFields(input, {"path"})) {
-        output["error"] = errors::makeMissingArgErrorPayload();
+        output["error"] = errors::makeMissingArgErrorPayload("path");
         return output;
     }
 

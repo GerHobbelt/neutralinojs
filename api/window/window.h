@@ -50,6 +50,7 @@ struct WindowOptions {
     bool fullScreen = false;
     bool alwaysOnTop = false;
     bool enableInspector = false;
+    bool openInspectorOnStartup = true;
     bool borderless= false;
     bool maximize = false;
     bool hidden = false;
@@ -60,6 +61,7 @@ struct WindowOptions {
     bool useSavedState = true;
     bool injectGlobals = false;
     bool injectClientLibrary = false;
+    bool skipTaskbar = false;
     string webviewArgs = "";
     string title = "Neutralinojs";
     string url = "https://neutralino.js.org";
@@ -117,6 +119,7 @@ pair<int, int> getPosition();
 void center(bool useConfigSizes);
 void setAlwaysOnTop(bool onTop);
 void setBorderless();
+void setSkipTaskbar(bool skip);
 bool snapshot(const string &filename);
 void setMainMenu(const json &menu);
 bool init(const json &windowOptions);

@@ -155,7 +155,7 @@ static void *dlib = nullptr;
 
 class gtk_webkit_engine {
 public:
-  gtk_webkit_engine(bool debug, void *window, bool transparent, const std::string &args)
+  gtk_webkit_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string &args)
       : m_window(static_cast<GtkWidget *>(window)) {
 
     XInitThreads();
@@ -281,8 +281,10 @@ public:
       webkit_settings_set_enable_write_console_messages_to_stdout(settings,
                                                                   true);
       webkit_settings_set_enable_developer_extras(settings, true);
-      WebKitWebInspector *inspector = webkit_web_view_get_inspector((WebKitWebView*)(m_webview));
-      webkit_web_inspector_show((WebKitWebInspector*)(inspector));
+      if (openInspector) {
+        WebKitWebInspector *inspector = webkit_web_view_get_inspector((WebKitWebView*)(m_webview));
+        webkit_web_inspector_show((WebKitWebInspector*)(inspector));
+      }
     }
 
     if(transparent) {
@@ -406,6 +408,7 @@ using browser_engine = gtk_webkit_engine;
 #define NSWindowStyleMaskClosable 2
 
 #define NSApplicationActivationPolicyRegular 0
+#define NSApplicationActivationPolicyAccessory 1
 
 #define WKUserScriptInjectionTimeAtDocumentStart 0
 
@@ -421,7 +424,7 @@ id operator"" _str(const char *s, std::size_t) {
 
 class cocoa_wkwebview_engine {
 public:
-  cocoa_wkwebview_engine(bool debug, void *window, bool transparent, const std::string &args) {
+  cocoa_wkwebview_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string &args) {
     // Application
     id app = ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
                                             "sharedApplication"_sel);
@@ -722,23 +725,37 @@ namespace webview {
 
 class edge_chromium {
 public:
-  bool embed(HWND wnd, bool debug) {
+  bool embed(HWND wnd, bool debug, bool openInspector) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     std::atomic_flag flag = ATOMIC_FLAG_INIT;
     flag.test_and_set();
 
-    char currentExePath[MAX_PATH];
-    GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
-    char *currentExeName = PathFindFileNameA(currentExePath);
+    // Use Unicode APIs to properly handle special characters in paths
+    wchar_t currentExePath[MAX_PATH];
+    GetModuleFileNameW(NULL, currentExePath, MAX_PATH);
+    wchar_t *currentExeName = PathFindFileNameW(currentExePath);
 
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> wideCharConverter;
-    std::wstring userDataFolder =
-        wideCharConverter.from_bytes(std::getenv("APPDATA"));
-    std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
+    // Get APPDATA with proper null check and fallback
+    wchar_t* appdataEnv = _wgetenv(L"APPDATA");
+    std::wstring userDataFolder;
+    if (appdataEnv) {
+        userDataFolder = std::wstring(appdataEnv);
+    } else {
+        // Fallback to temp directory if APPDATA is not available
+        wchar_t tempPath[MAX_PATH];
+        GetTempPathW(MAX_PATH, tempPath);
+        userDataFolder = std::wstring(tempPath);
+    }
+    std::wstring currentExeNameW = currentExeName ? std::wstring(currentExeName) : L"neutralino";
+
+    // Ensure the user data folder path is properly formatted
+    if (!userDataFolder.empty() && userDataFolder.back() != L'\\' && userDataFolder.back() != L'/') {
+        userDataFolder += L"\\";
+    }
 
     HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
-        (userDataFolder + L"/" + currentExeNameW).c_str(),
+        (userDataFolder + currentExeNameW).c_str(),
         nullptr,
         new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
             m_controller = controller;
@@ -749,7 +766,8 @@ public:
             m_webview->get_Settings(&m_settings);
             if (debug) {
                 m_settings->put_AreDevToolsEnabled(TRUE);
-                m_webview->OpenDevToolsWindow();
+                if (openInspector)
+                  m_webview->OpenDevToolsWindow();
             }
             else {
                 m_settings->put_AreDevToolsEnabled(FALSE);
@@ -885,7 +903,7 @@ private:
 
 class win32_edge_engine {
 public:
-  win32_edge_engine(bool debug, void *window, bool transparent, const std::string& args) {
+  win32_edge_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string& args) {
     if(args != "") {
         std::wstring wargs = str2wstr(args);
         SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", wargs.c_str());
@@ -1031,7 +1049,7 @@ public:
     // set dark mode of title bar according to system theme
     TrySetWindowTheme(m_window);
 
-    if (!m_browser->embed(m_window, debug)) {
+    if (!m_browser->embed(m_window, debug, openInspector)) {
       initCode = 1;
     }
 
@@ -1184,8 +1202,8 @@ namespace webview {
 
 class webview : public browser_engine {
 public:
-  webview(bool debug = false, void *wnd = nullptr, bool transparent = false, const std::string& args = "")
-      : browser_engine(debug, wnd, transparent, args) {}
+  webview(bool debug = false, bool openInspector = true, void *wnd = nullptr, bool transparent = false, const std::string& args = "")
+      : browser_engine(debug, openInspector, wnd, transparent, args) {}
 
   void navigate(const std::string url) {
     browser_engine::navigate(url);
