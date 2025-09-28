@@ -60,6 +60,7 @@ struct WindowOptions {
     bool useSavedState = true;
     bool injectGlobals = false;
     bool injectClientLibrary = false;
+    string webviewArgs = "";
     string title = "Neutralinojs";
     string url = "https://neutralino.js.org";
     string icon = "";
@@ -118,12 +119,14 @@ void setAlwaysOnTop(bool onTop);
 void setBorderless();
 bool snapshot(const string &filename);
 void setMainMenu(const json &menu);
+bool init(const json &windowOptions);
 
 void _close(int exitCode);
 
+void beginDrag();
+
 namespace controllers {
 
-json init(const json &input);
 json setTitle(const json &input);
 json getTitle(const json &input);
 json maximize(const json &input);
@@ -148,6 +151,7 @@ json getPosition(const json &input);
 json setAlwaysOnTop(const json &input);
 json snapshot(const json &input);
 json setMainMenu(const json &input);
+json beginDrag(const json& input);
 json print(const json &input);
 
 } // namespace controllers

@@ -67,6 +67,7 @@ map<string, router::NativeMethod> methodMap = {
     {"window.focus", window::controllers::focus},
     {"window.setIcon", window::controllers::setIcon},
     {"window.move", window::controllers::move},
+    {"window.beginDrag", window::controllers::beginDrag},
     {"window.center", window::controllers::center},
     {"window.setSize", window::controllers::setSize},
     {"window.getSize", window::controllers::getSize},
@@ -109,6 +110,9 @@ map<string, router::NativeMethod> methodMap = {
     {"filesystem.getPathParts", fs::controllers::getPathParts},
     {"filesystem.getPermissions", fs::controllers::getPermissions},
     {"filesystem.setPermissions", fs::controllers::setPermissions},
+    {"filesystem.getJoinedPath", fs::controllers::getJoinedPath},
+    {"filesystem.getNormalizedPath", fs::controllers::getNormalizedPath},
+    {"filesystem.getUnnormalizedPath", fs::controllers::getUnnormalizedPath},
     // Neutralino.os
     {"os.execCommand", os::controllers::execCommand},
     {"os.spawnProcess", os::controllers::spawnProcess},
