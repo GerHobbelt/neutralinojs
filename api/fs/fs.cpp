@@ -3,6 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <regex>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
@@ -26,6 +28,7 @@
 #include <efsw/efsw.hpp>
 #include "lib/json/json.hpp"
 #include "lib/base64/base64.hpp"
+#include "lib/platformfolders/platform_folders.h"
 #include "settings.h"
 #include "helpers.h"
 #include "errors.h"
@@ -347,6 +350,20 @@ fs::DirReaderResult readDirectory(const string &path, bool recursive) {
         }
     }
     return dirResult;
+}
+
+string applyPathConstants(const string &path) {
+    string newPath = regex_replace(path, regex("\\$\\{NL_PATH\\}"), settings::getAppPath());
+
+    vector<string> pathNames = {"data", "cache", "documents", 
+                    "pictures", "music", "video", "downloads",
+                    "saveGames1", "saveGames2", "temp"};
+    for(const string &pathName: pathNames) {
+        string varSegment = pathName;
+        transform(varSegment.begin(), varSegment.end(), varSegment.begin(), ::toupper); 
+        newPath = regex_replace(newPath, regex("\\$\\{NL_OS" + varSegment + "PATH\\}"), os::getPath(pathName));
+    }
+    return newPath;
 }
 
 namespace controllers {

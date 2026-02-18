@@ -135,6 +135,9 @@ void windowStateChange(int state) {
         case WEBVIEW_WINDOW_MAXIMIZE:
             events::dispatch("windowMaximize", nullptr);
             break;
+        case WEBVIEW_WINDOW_ACTIVATE:
+            events::dispatch("windowActivate", nullptr);
+            break;
     }
 }
 
@@ -227,6 +230,26 @@ bool __getEncoderClsid(const WCHAR *format, CLSID *pClsid) {
     return false;
 }
 #endif
+
+double __getScaleFactor() {
+	#if defined(_WIN32)
+    return GetDpiForSystem() / 96.0;
+
+	#elif defined(__APPLE__)
+    id screen = ((id (*)(id, SEL))objc_msgSend)(
+        "NSScreen"_cls, "mainScreen"_sel);
+    return ((double (*)(id, SEL))objc_msgSend)(
+        screen, "backingScaleFactor"_sel);
+
+	#elif defined(__linux__) || defined(__FreeBSD__)
+    GdkDisplay* display = gdk_display_get_default();
+    GdkMonitor* monitor = gdk_display_get_primary_monitor(display);
+    return gdk_monitor_get_scale_factor(monitor);
+
+	#else
+    return 1.0;
+	#endif
+}
 
 json __sizeOptionsToJson(const window::SizeOptions &opt) {
     json output = {
@@ -591,11 +614,25 @@ bool __createWindow() {
     if(windowProps.extendUserAgentWith != "") {
         nativeWindow->extend_user_agent(windowProps.extendUserAgentWith);
     }
-    nativeWindow->set_size(windowProps.sizeOptions.width,
-                    windowProps.sizeOptions.height,
-                    windowProps.sizeOptions.minWidth, windowProps.sizeOptions.minHeight,
-                    windowProps.sizeOptions.maxWidth, windowProps.sizeOptions.maxHeight,
-                    windowProps.sizeOptions.resizable);
+
+    int width = windowProps.sizeOptions.width;
+    int height = windowProps.sizeOptions.height;
+    if(windowProps.useLogicalPixels) {
+        double scale = __getScaleFactor();
+        if(width > 0)  width  = (int)(width  * scale);
+        if(height > 0) height = (int)(height * scale);
+    }
+
+    nativeWindow->set_size(
+    width,
+    height,
+    windowProps.sizeOptions.minWidth,
+    windowProps.sizeOptions.minHeight,
+    windowProps.sizeOptions.maxWidth,
+    windowProps.sizeOptions.maxHeight,
+    windowProps.sizeOptions.resizable
+);
+
     nativeWindow->setEventHandler(&window::handlers::windowStateChange);
 
     if(windowProps.injectGlobals) 
@@ -947,6 +984,11 @@ window::SizeOptions getSize() {
         height = winPos.bottom - winPos.top;
     }
     #endif
+    if(windowProps.useLogicalPixels) {
+        double scale = __getScaleFactor();
+        width = (int)(width / scale);
+        height = (int)(height / scale);
+   }
 
     windowProps.sizeOptions.width = width;
     windowProps.sizeOptions.height = height;
@@ -1178,6 +1220,11 @@ bool init(const json &windowOptions) {
 
     if(helpers::hasField(windowOptions, "x"))
         windowProps.x = windowOptions["x"].get<int>();
+    
+    if(helpers::hasField(windowOptions, "useLogicalPixels")) {
+        windowProps.useLogicalPixels = windowOptions["useLogicalPixels"].get<bool>();
+    }
+
 
     if(helpers::hasField(windowOptions, "y"))
         windowProps.y = windowOptions["y"].get<int>();
@@ -1388,8 +1435,11 @@ json focus(const json &input) {
     #if defined(__linux__) || defined(__FreeBSD__)
     gtk_window_present(GTK_WINDOW(windowHandle));
     #elif defined(__APPLE__)
+    ((void (*)(id, SEL))objc_msgSend)(
+        ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls, "sharedApplication"_sel),
+        "activate"_sel);
     ((void (*)(id, SEL, id))objc_msgSend)((id) windowHandle,
-            "orderFront:"_sel, NULL);
+            "makeKeyAndOrderFront:"_sel, NULL);
     #elif defined(_WIN32)
     SetForegroundWindow(windowHandle);
     #endif
@@ -1433,13 +1483,30 @@ json center(const json &input) {
 json setSize(const json &input) {
     json output;
     windowProps.sizeOptions = __jsonToSizeOptions(input);
-    nativeWindow->set_size(windowProps.sizeOptions.width, windowProps.sizeOptions.height,
-                    windowProps.sizeOptions.minWidth, windowProps.sizeOptions.minHeight,
-                    windowProps.sizeOptions.maxWidth, windowProps.sizeOptions.maxHeight,
-                    windowProps.sizeOptions.resizable);
+
+    int width = windowProps.sizeOptions.width;
+    int height = windowProps.sizeOptions.height;
+
+    if(windowProps.useLogicalPixels) {
+        double scale = __getScaleFactor();
+        if(width > 0)  width  = (int)(width  * scale);
+        if(height > 0) height = (int)(height * scale);
+    }
+
+    nativeWindow->set_size(
+        width,
+        height,
+        windowProps.sizeOptions.minWidth,
+        windowProps.sizeOptions.minHeight,
+        windowProps.sizeOptions.maxWidth,
+        windowProps.sizeOptions.maxHeight,
+        windowProps.sizeOptions.resizable
+    );
+
     output["success"] = true;
     return output;
 }
+
 
 json getSize(const json &input) {
     json output;

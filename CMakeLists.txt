@@ -1,10 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
-set(NEU_VERSION "6.4.0")
+set(NEU_VERSION "6.5.0")
 set(NEU_CXX_STANDARD 17)
 if(APPLE)
   project(NeutralinoJS LANGUAGES C CXX OBJC OBJCXX)
 else()
   project(NeutralinoJS LANGUAGES C CXX)
+endif()
+
+# MSVC runtime (FIX for clean Windows)
+if (MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 execute_process(
