@@ -33,11 +33,14 @@
 #define WEBVIEW_WINDOW_CLOSE 0
 #define WEBVIEW_WINDOW_FOCUS 1
 #define WEBVIEW_WINDOW_BLUR 2
-#define WEBVIEW_WINDOW_FULLSCREEN 3 // GTK only
-#define WEBVIEW_WINDOW_UNFULLSCREEN 4 // GTK only
-#define WEBVIEW_WINDOW_MINIMIZED 5 // GTK only
-#define WEBVIEW_WINDOW_UNMINIMIZED 6 // GTK only
-#define WEBVIEW_WINDOW_UNDEFINED 100 // GTK only
+#define WEBVIEW_WINDOW_FULLSCREEN 3
+#define WEBVIEW_WINDOW_UNFULLSCREEN 4
+#define WEBVIEW_WINDOW_MINIMIZED 5
+#define WEBVIEW_WINDOW_RESTORED 6
+#define WEBVIEW_WINDOW_SHOW 7
+#define WEBVIEW_WINDOW_HIDE 8
+#define WEBVIEW_WINDOW_MAXIMIZE 9
+#define WEBVIEW_WINDOW_UNDEFINED 100
 
 #ifndef WEBVIEW_HEADER
 
@@ -157,6 +160,8 @@ class gtk_webkit_engine {
 public:
   gtk_webkit_engine(bool debug, bool openInspector, void *window, bool transparent, const std::string &args)
       : m_window(static_cast<GtkWidget *>(window)) {
+        
+    setlocale(LC_ALL, "");
 
     XInitThreads();
     gtk_init_check(0, NULL);
@@ -219,11 +224,15 @@ public:
             }
             else if(event->changed_mask & GDK_WINDOW_STATE_ICONIFIED) {
                 windowStateChange(event->new_window_state & GDK_WINDOW_STATE_ICONIFIED ? 
-                  WEBVIEW_WINDOW_MINIMIZED : WEBVIEW_WINDOW_UNMINIMIZED);
+                  WEBVIEW_WINDOW_MINIMIZED : WEBVIEW_WINDOW_RESTORED);
             }
             else if(event->changed_mask & GDK_WINDOW_STATE_FOCUSED) {
                 windowStateChange(event->new_window_state & GDK_WINDOW_STATE_FOCUSED ? 
                   WEBVIEW_WINDOW_FOCUS : WEBVIEW_WINDOW_BLUR);
+            }
+            else if(event->changed_mask & GDK_WINDOW_STATE_MAXIMIZED && 
+                event->new_window_state & GDK_WINDOW_STATE_MAXIMIZED) {
+                windowStateChange(WEBVIEW_WINDOW_MAXIMIZE);
             }
             else
                 windowStateChange(WEBVIEW_WINDOW_UNDEFINED);
@@ -490,6 +499,35 @@ public:
                     (IMP)(+[](id, SEL, id) {
                         if(windowStateChange)
                           windowStateChange(WEBVIEW_WINDOW_BLUR);
+                    }), "c@:@");
+    class_addMethod(wcls, "windowDidMiniaturize:"_sel,
+                    (IMP)(+[](id, SEL, id) {
+                        if(windowStateChange)
+                          windowStateChange(WEBVIEW_WINDOW_MINIMIZED);
+                    }), "c@:@");
+    class_addMethod(wcls, "windowDidDeminiaturize:"_sel,
+                    (IMP)(+[](id, SEL, id) {
+                        if(windowStateChange)
+                          windowStateChange(WEBVIEW_WINDOW_RESTORED);
+                    }), "c@:@");
+    class_addMethod(wcls, "windowDidEnterFullScreen:"_sel,
+                    (IMP)(+[](id, SEL, id) {
+                        if(windowStateChange)
+                          windowStateChange(WEBVIEW_WINDOW_FULLSCREEN);
+                    }), "c@:@");
+    class_addMethod(wcls, "windowDidExitFullScreen:"_sel,
+                    (IMP)(+[](id, SEL, id) {
+                        if(windowStateChange)
+                          windowStateChange(WEBVIEW_WINDOW_UNFULLSCREEN);
+                    }), "c@:@");
+    class_addMethod(wcls, "windowDidEndLiveResize:"_sel,
+                    (IMP)(+[](id, SEL, id notification) {
+                        bool isZoomed = ((bool (*)(id, SEL))objc_msgSend)(
+                            ((id (*)(id, SEL))objc_msgSend)((id) notification,
+                            "object"_sel),
+                          "isZoomed"_sel);
+                        if(isZoomed && windowStateChange)
+                          windowStateChange(WEBVIEW_WINDOW_MAXIMIZE);
                     }), "c@:@");
 
     objc_registerClassPair(wcls);
@@ -929,6 +967,13 @@ public:
             switch (msg) {
             case WM_SIZE:
               w->m_browser->resize(hwnd);
+              if(!windowStateChange) break;
+              if(wp == SIZE_MINIMIZED) 
+                windowStateChange(WEBVIEW_WINDOW_MINIMIZED);
+              else if(wp == SIZE_RESTORED) 
+                windowStateChange(WEBVIEW_WINDOW_RESTORED);
+              else if(wp == SIZE_MAXIMIZED) 
+                windowStateChange(WEBVIEW_WINDOW_MAXIMIZE);
               break;
             case WM_CLOSE:
               if(windowStateChange)

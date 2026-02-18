@@ -73,6 +73,7 @@ map<string, router::NativeMethod> methodMap = {
     {"window.getSize", window::controllers::getSize},
     {"window.getPosition", window::controllers::getPosition},
     {"window.setAlwaysOnTop", window::controllers::setAlwaysOnTop},
+    {"window.setBorderless", window::controllers::setBorderless},
     {"window.snapshot", window::controllers::snapshot},
     {"window.setMainMenu", window::controllers::setMainMenu},
     {"window.print", window::controllers::print},
@@ -131,6 +132,7 @@ map<string, router::NativeMethod> methodMap = {
     // Neutralino.storage
     {"storage.setData", storage::controllers::setData},
     {"storage.getData", storage::controllers::getData},
+    {"storage.removeData", storage::controllers::removeData},
     {"storage.getKeys", storage::controllers::getKeys},
     {"storage.clear", storage::controllers::clear},
     // Neutralino.events

@@ -15,6 +15,11 @@
 #include <CoreFoundation/Corefoundation.h>
 #include <CoreGraphics/CGDisplayConfiguration.h>
 #include <CoreGraphics/CGWindow.h>
+
+#if defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED >= 120300
+#import <ScreenCaptureKit/ScreenCaptureKit.h>
+#endif
+
 #define NSBaseWindowLevel 0
 #define NSFloatingWindowLevel 5
 #define NSWindowStyleMaskFullScreen 16384
@@ -101,21 +106,34 @@ void windowStateChange(int state) {
             #if defined(__linux__) || defined(__FreeBSD__)
                 isGtkWindowFullScreen = true;
             #endif
+            events::dispatch("windowFullScreenEnter", nullptr);
             break;
         case WEBVIEW_WINDOW_UNFULLSCREEN:
             #if defined(__linux__) || defined(__FreeBSD__)
                 isGtkWindowFullScreen = false;
             #endif
+            events::dispatch("windowFullScreenExit", nullptr);
             break;
         case WEBVIEW_WINDOW_MINIMIZED:
             #if defined(__linux__) || defined(__FreeBSD__)
                 isGtkWindowMinimized = true;
             #endif
+            events::dispatch("windowMinimize", nullptr);
             break;
-        case WEBVIEW_WINDOW_UNMINIMIZED:
+        case WEBVIEW_WINDOW_RESTORED:
             #if defined(__linux__) || defined(__FreeBSD__)
                 isGtkWindowMinimized = false;
             #endif
+            events::dispatch("windowRestore", nullptr);
+            break;
+        case WEBVIEW_WINDOW_SHOW:
+            events::dispatch("windowShow", nullptr);
+            break;
+        case WEBVIEW_WINDOW_HIDE:
+            events::dispatch("windowHide", nullptr);
+            break;
+        case WEBVIEW_WINDOW_MAXIMIZE:
+            events::dispatch("windowMaximize", nullptr);
             break;
     }
 }
@@ -155,15 +173,8 @@ pair<int, int> __getCenterPos(bool useConfigSizes = false) {
 
 #if defined(__APPLE__)
 CGRect __getWindowRect() {
-    // "frame"_sel is the easiest way, but it crashes
-    // So, this is a workaround with low-level APIs.
-    long winId = ((long(*)(id, SEL))objc_msgSend)(windowHandle, "windowNumber"_sel);
-    auto winInfoArray = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, winId);
-    auto winInfo = CFArrayGetValueAtIndex(winInfoArray, 0);
-    auto winBounds = CFDictionaryGetValue((CFDictionaryRef) winInfo, kCGWindowBounds);
-
-    CGRect winPos;
-    CGRectMakeWithDictionaryRepresentation((CFDictionaryRef) winBounds, &winPos);
+    CGRect winPos = ((CGRect (*)(id, SEL))objc_msgSend)(
+        (id) windowHandle, "frame"_sel);
     return winPos;
 }
 #endif
@@ -237,6 +248,17 @@ void __saveWindowProps() {
     options["x"] = pos.first;
     options["y"] = pos.second;
     options["maximize"] = window::isMaximized();
+    
+    #if defined(_WIN32)
+    if(IsZoomed(windowHandle)) {
+        WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+        GetWindowPlacement(windowHandle, &wp);
+        options["width"] = wp.rcNormalPosition.right - wp.rcNormalPosition.left;
+        options["height"] = wp.rcNormalPosition.bottom - wp.rcNormalPosition.top;
+        options["x"] = wp.rcNormalPosition.left;
+        options["y"] = wp.rcNormalPosition.top;
+    }
+    #endif
 
     filesystem::create_directories(CONVSTR(settings::joinAppDataPath("/.tmp")));
     fs::FileWriterOptions writerOptions = { settings::joinAppDataPath(NEU_WIN_CONFIG_FILE), helpers::jsonToString(options) };
@@ -256,6 +278,17 @@ bool __loadSavedWindowProps() {
         windowProps.maximize = options["maximize"].get<bool>();
         windowProps.sizeOptions.width = options["width"].get<int>();
         windowProps.sizeOptions.height = options["height"].get<int>();
+
+        #if defined(_WIN32)
+        WINDOWPLACEMENT wp = {sizeof(WINDOWPLACEMENT)};
+        wp.rcNormalPosition.left = windowProps.x;
+        wp.rcNormalPosition.top = windowProps.y;
+        wp.rcNormalPosition.right = windowProps.x + windowProps.sizeOptions.width;
+        wp.rcNormalPosition.bottom = windowProps.y + windowProps.sizeOptions.height;
+        wp.showCmd = SW_SHOWNORMAL;
+
+        SetWindowPlacement(windowHandle, &wp);
+        #endif
     }
     catch(exception e) {
         debug::log(debug::LogTypeError, errors::makeErrorMsg(errors::NE_CF_UNBLWCF, string(NEU_WIN_CONFIG_FILE)));
@@ -593,9 +626,6 @@ bool __createWindow() {
         window::move(windowProps.x, windowProps.y);
     #endif
 
-    if(windowProps.maximize)
-        window::maximize();
-
     if(windowProps.hidden)
         window::hide();
 
@@ -603,6 +633,9 @@ bool __createWindow() {
     if (!windowProps.hidden && __isFakeHidden())
 		__undoFakeHidden();
     #endif
+
+    if(windowProps.maximize)
+        window::maximize();
 
     if(windowProps.fullScreen)
         window::setFullScreen();
@@ -614,7 +647,7 @@ bool __createWindow() {
         window::setAlwaysOnTop(true);
 
     if(windowProps.borderless)
-        window::setBorderless();
+        window::setBorderless(true);
 
     if(windowProps.skipTaskbar)
         window::setSkipTaskbar(true);
@@ -719,6 +752,8 @@ void show() {
     if (__isFakeHidden())
         __undoFakeHidden();
     #endif
+
+    window::handlers::windowStateChange(WEBVIEW_WINDOW_SHOW);
 }
 
 void hide() {
@@ -732,6 +767,8 @@ void hide() {
     #elif defined(_WIN32)
     ShowWindow(windowHandle, SW_HIDE);
     #endif
+
+    window::handlers::windowStateChange(WEBVIEW_WINDOW_HIDE);
 }
 
 bool isFullScreen() {
@@ -778,6 +815,7 @@ void setFullScreen() {
                 r.bottom - r.top,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     isWinWindowFullScreen = true;
+    window::handlers::windowStateChange(WEBVIEW_WINDOW_FULLSCREEN);
     #endif
 }
 
@@ -796,6 +834,7 @@ void exitFullScreen() {
                 savedRect.bottom - savedRect.top,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     isWinWindowFullScreen = false;
+    window::handlers::windowStateChange(WEBVIEW_WINDOW_UNFULLSCREEN);
     #endif
 }
 
@@ -864,7 +903,7 @@ void move(int x, int y) {
     #endif
 }
 
-void beginDrag() {
+void beginDragNative() {
 
     #if defined(__linux__) || defined(__FreeBSD__)
     auto mousePos = computer::getMousePosition();
@@ -889,16 +928,24 @@ window::SizeOptions getSize() {
     gtk_window_get_size(GTK_WINDOW(windowHandle),
                         &width, &height);
     #elif defined(__APPLE__)
-    CGRect winPos = __getWindowRect();
+    CGRect frameRect = __getWindowRect();
 
-    width = winPos.size.width;
-    height = winPos.size.height;
+    width = frameRect.size.width;
+    height = frameRect.size.height;
 
     #elif defined(_WIN32)
-    RECT winPos;
-    GetWindowRect(windowHandle, &winPos);
-    width = winPos.right - winPos.left;
-    height = winPos.bottom - winPos.top;
+    if(IsIconic(windowHandle)) {
+        WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+        GetWindowPlacement(windowHandle, &wp);
+        width = wp.rcNormalPosition.right - wp.rcNormalPosition.left;
+        height = wp.rcNormalPosition.bottom - wp.rcNormalPosition.top;
+    }
+    else {
+        RECT winPos;
+        GetWindowRect(windowHandle, &winPos);
+        width = winPos.right - winPos.left;
+        height = winPos.bottom - winPos.top;
+    }
     #endif
 
     windowProps.sizeOptions.width = width;
@@ -912,15 +959,26 @@ pair<int, int> getPosition() {
     gdk_window_get_root_origin(gtk_widget_get_window(windowHandle), &x, &y);
 
     #elif defined(__APPLE__)
-    CGRect winPos = __getWindowRect();
-    x = winPos.origin.x;
-    y = winPos.origin.y;
+    CGRect frameRect = __getWindowRect();
+    auto displayId = CGMainDisplayID();
+    int height = CGDisplayPixelsHigh(displayId);
+
+    x = frameRect.origin.x;
+    y = height - frameRect.origin.y - frameRect.size.height;
 
     #elif defined(_WIN32)
-    RECT winPos;
-    GetWindowRect(windowHandle, &winPos);
-    x = winPos.left;
-    y = winPos.top;
+    if(IsIconic(windowHandle)) {
+        WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+        GetWindowPlacement(windowHandle, &wp);
+        x = wp.rcNormalPosition.left;
+        y = wp.rcNormalPosition.top;
+    }
+    else {
+        RECT winPos;
+        GetWindowRect(windowHandle, &winPos);
+        x = winPos.left;
+        y = winPos.top;
+    }
     #endif
 
     return make_pair(x, y);
@@ -943,18 +1001,20 @@ void setAlwaysOnTop(bool onTop) {
     #endif
 }
 
-void setBorderless() {
+void setBorderless(bool borderless) {
     #if defined(__linux__) || defined(__FreeBSD__)
-    gtk_window_set_decorated(GTK_WINDOW(windowHandle), false);
+    gtk_window_set_decorated(GTK_WINDOW(windowHandle), !borderless);
     #elif defined(__APPLE__)
     unsigned long windowStyleMask = ((unsigned long (*)(id, SEL))objc_msgSend)(
         (id) windowHandle, "styleMask"_sel);
-    windowStyleMask &= ~NSWindowStyleMaskTitled;
+    windowStyleMask = borderless ? (windowStyleMask & ~NSWindowStyleMaskTitled) : 
+                    (windowStyleMask | NSWindowStyleMaskTitled);
     ((void (*)(id, SEL, int))objc_msgSend)((id) windowHandle,
             "setStyleMask:"_sel, windowStyleMask);
     #elif defined(_WIN32)
     DWORD currentStyle = GetWindowLong(windowHandle, GWL_STYLE);
-    currentStyle &= ~(WS_CAPTION | WS_THICKFRAME);
+    currentStyle = borderless ? (currentStyle & ~(WS_CAPTION | WS_THICKFRAME)) : 
+                    (currentStyle | (WS_CAPTION | WS_THICKFRAME));
     SetWindowLong(windowHandle, GWL_STYLE, currentStyle);
     SetWindowPos(windowHandle, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE |
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
@@ -998,7 +1058,38 @@ bool snapshot(const string &filename) {
     clientRect.origin.y +=  frameRect.size.height - clientRect.size.height;
 
     long winId = ((long(*)(id, SEL))objc_msgSend)(windowHandle, "windowNumber"_sel);
-    CGImageRef imgRef = CGWindowListCreateImage(clientRect, kCGWindowListOptionIncludingWindow, winId, kCGWindowImageBoundsIgnoreFraming); 
+    
+CGImageRef imgRef = nil;
+
+#if defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED >= 120300
+    // Modern ScreenCaptureKit API (macOS 12.3+)
+    __block CGImageRef screenshotImage = nil;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    
+    SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:
+        [SCWindow windowWithWindowID:winId]];
+    
+    SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
+    config.scalesToFit = NO;
+    
+    [SCScreenshotManager captureImageWithFilter:filter
+                                  configuration:config
+                              completionHandler:^(CGImageRef capturedImage, NSError *error) {
+        if (error == nil && capturedImage != NULL) {
+            
+            screenshotImage = CGImageCreateWithImageInRect(capturedImage, clientRect);
+        }
+        dispatch_semaphore_signal(semaphore);  
+    }];
+    
+    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC));
+    imgRef = screenshotImage;
+
+#else
+    // Fallback for macOS < 12.3
+    imgRef = CGWindowListCreateImage(clientRect, kCGWindowListOptionIncludingWindow, winId, kCGWindowImageBoundsIgnoreFraming);
+#endif
+
       
     id screenshot =
         ((id (*)(id, SEL))objc_msgSend)("NSBitmapImageRep"_cls, "alloc"_sel);
@@ -1370,6 +1461,17 @@ json setAlwaysOnTop(const json &input) {
     return output;
 }
 
+json setBorderless(const json &input) {
+    json output;
+    bool borderless = true;
+    if(helpers::hasField(input, "borderless")) {
+        borderless = input["borderless"].get<bool>();
+    }
+    window::setBorderless(borderless);
+    output["success"] = true;
+    return output;
+}
+
 json getPosition(const json &input) {
     json output;
     json posRes;
@@ -1408,11 +1510,15 @@ json setMainMenu(const json &input) {
 }
 
 
-json beginDrag(const json& input) {
+json beginDrag(const json &input) {
     json output;
     
-    window::beginDrag();
-    
+    #if defined(_WIN32)
+    nativeWindow->dispatch([&]() { beginDragNative(); });
+    #elif defined(__linux__) || defined(__FreeBSD__) || defined(__APPLE__)
+    window::beginDragNative();
+    #endif
+
     output["success"] = true;
     return output;
 }
@@ -1445,6 +1551,7 @@ json print(const json &input) {
     output["success"] = true;
     return output;
 }
+
 
 } // namespace controllers
 
