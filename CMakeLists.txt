@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-set(NEU_VERSION "6.5.0")
+set(NEU_VERSION "6.6.0")
 set(NEU_CXX_STANDARD 17)
 if(APPLE)
   project(NeutralinoJS LANGUAGES C CXX OBJC OBJCXX)
@@ -214,8 +214,12 @@ elseif(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
       ${WebKit_FRAMEWORK}
       ${COCOA_FRAMEWORK}
-      ${SCREENCAPTUREKIT_FRAMEWORK}
     )
+    if(SCREENCAPTUREKIT_FRAMEWORK)
+      target_link_libraries(${PROJECT_NAME} PRIVATE
+        ${SCREENCAPTUREKIT_FRAMEWORK}
+      )
+    endif()
     target_compile_options(${PROJECT_NAME} PRIVATE
       -Wno-deprecated-declarations
       -Os
