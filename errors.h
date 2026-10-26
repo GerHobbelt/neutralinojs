@@ -26,6 +26,7 @@ enum StatusCode {
     NE_OS_TRAYIER,
     NE_OS_INVKNPT,
     NE_OS_UNLTRAS,
+    NE_OS_UNLTOUV,
     // computer
     NE_CO_UNLTOSC,
     NE_CO_UNLTOMG,
@@ -71,6 +72,12 @@ enum StatusCode {
     NE_SR_UNBPARS,
     NE_SR_MPINUSE,
     NE_SR_NOMTPTH,
+    // net
+    NE_NW_SSLCONN,
+    NE_NW_SSLLOAD,
+    NE_NW_SSLVERI,
+    NE_NW_SSLHOST,
+    NE_NW_HTTPERR,
     // config
     NE_CF_UNBLDCF,
     NE_CF_UNBPRCF,

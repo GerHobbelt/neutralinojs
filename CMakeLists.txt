@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-set(NEU_VERSION "6.8.0")
+set(NEU_VERSION "6.9.0")
 set(NEU_CXX_STANDARD 17)
 if(APPLE)
   project(NeutralinoJS LANGUAGES C CXX OBJC OBJCXX)
@@ -23,11 +23,6 @@ execute_process(
 # =========================
 # Source files
 # =========================
-set(HWINFO_SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/hwinfo")
-set(HWINFO_DISK_SOURCES
-  ${HWINFO_SOURCE_DIR}/src/disk.cpp
-)
-
 file (GLOB SOURCES *.cpp)
 file(GLOB_RECURSE RECURSIVE_SOURCES
   auth/*.cpp
@@ -40,9 +35,11 @@ file(GLOB_RECURSE RECURSIVE_SOURCES
   lib/clip/image.cpp
   lib/infoware/src/**/*.cpp
   lib/efsw/src/efsw/*.cpp
+  lib/hwinfo/src/*.cpp
   lib/trashcan/trashcan.c
+  lib/mbedtls/library/*.c
 )
-list(APPEND SOURCES ${RECURSIVE_SOURCES} ${HWINFO_DISK_SOURCES})
+list(APPEND SOURCES ${RECURSIVE_SOURCES})
 
 if(WIN32)
   set(NEU_OS_NAME "win")
@@ -149,6 +146,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   INFOWARE_VERSION="0.6.0"
   INFOWARE_USE_X11
   CLIP_ENABLE_IMAGE
+  CPPHTTPLIB_MBEDTLS_SUPPORT
 )
 
 if(WIN32)
@@ -188,6 +186,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   ${PROJECT_SOURCE_DIR}/lib/efsw/include
   ${PROJECT_SOURCE_DIR}/lib/efsw/src
   ${PROJECT_SOURCE_DIR}/lib/hwinfo/include
+  ${PROJECT_SOURCE_DIR}/lib/mbedtls/include
 )
 if(WIN32)
   target_include_directories(${PROJECT_NAME} PRIVATE 
@@ -232,11 +231,13 @@ elseif(APPLE)
     find_library(IOKIT_FRAMEWORK IOKit)
     find_library(SCREENCAPTUREKIT_FRAMEWORK ScreenCaptureKit)
     find_library(IOKIT_FRAMEWORK IOKit)
+    find_library(SECURITY_FRAMEWORK Security)
     target_link_libraries(${PROJECT_NAME} PRIVATE
       ${WebKit_FRAMEWORK}
       ${COCOA_FRAMEWORK}
       ${COREFOUNDATION_FRAMEWORK}
       ${IOKIT_FRAMEWORK}
+      ${SECURITY_FRAMEWORK}
     )
     if(SCREENCAPTUREKIT_FRAMEWORK)
       target_link_libraries(${PROJECT_NAME} PRIVATE

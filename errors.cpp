@@ -26,6 +26,7 @@ string __getStatusCodeString(const errors::StatusCode code) {
         case errors::NE_OS_TRAYIER: return "NE_OS_TRAYIER";
         case errors::NE_OS_INVKNPT: return "NE_OS_INVKNPT";
         case errors::NE_OS_UNLTRAS: return "NE_OS_UNLTRAS";
+        case errors::NE_OS_UNLTOUV: return "NE_OS_UNLTOUV";
         // computer
         case errors::NE_CO_UNLTOSC: return "NE_CO_UNLTOSC";
         case errors::NE_CO_UNLTOMG: return "NE_CO_UNLTOMG";
@@ -71,6 +72,12 @@ string __getStatusCodeString(const errors::StatusCode code) {
         case errors::NE_SR_UNBPARS: return "NE_SR_UNBPARS";
         case errors::NE_SR_MPINUSE: return "NE_SR_MPINUSE";
         case errors::NE_SR_NOMTPTH: return "NE_SR_NOMTPTH";
+        // net
+        case errors::NE_NW_SSLCONN: return "NE_NW_SSLCONN";
+        case errors::NE_NW_SSLLOAD: return "NE_NW_SSLLOAD";
+        case errors::NE_NW_SSLVERI: return "NE_NW_SSLVERI";
+        case errors::NE_NW_SSLHOST: return "NE_NW_SSLHOST";
+        case errors::NE_NW_HTTPERR: return "NE_NW_HTTPERR";
         // config
         case errors::NE_CF_UNBLDCF: return "NE_CF_UNBLDCF";
         case errors::NE_CF_UNBPRCF: return "NE_CF_UNBPRCF";
@@ -97,6 +104,7 @@ string __findStatusCodeDesc(errors::StatusCode code) {
         case errors::NE_OS_TRAYIER: return "Unable to initialize the tray menu";
         case errors::NE_OS_INVKNPT: return "Invalid platform path name: %1";
         case errors::NE_OS_UNLTRAS: return "Unable to move %1 item to trash";
+        case errors::NE_OS_UNLTOUV: return "Unable to set environment variable";
         // computer
         case errors::NE_CO_UNLTOSC: return "Unable to set mouse cursor";
         case errors::NE_CO_UNLTONI: return "Unable to retrieve network interfaces";
@@ -142,6 +150,12 @@ string __findStatusCodeDesc(errors::StatusCode code) {
         case errors::NE_SR_UNBPARS: return "Unable to parse native call payload";
         case errors::NE_SR_MPINUSE: return "Mount path is already in use: %1";
         case errors::NE_SR_NOMTPTH: return "Cannot unmount %1, the path that was not mounted";
+        // net
+        case errors::NE_NW_SSLCONN: return "SSL connection failed: %1";
+        case errors::NE_NW_SSLLOAD: return "SSL certificate loading failed: %1";
+        case errors::NE_NW_SSLVERI: return "SSL server verification failed for %1";
+        case errors::NE_NW_SSLHOST: return "SSL hostname verification failed for %1";
+        case errors::NE_NW_HTTPERR: return "HTTP error: %1";
         // config
         case errors::NE_CF_UNBLDCF: return "Unable to load the %1 configuration file. Framework defaults will be loaded.";
         case errors::NE_CF_UNBPRCF: return "Unable to parse the config file: %1";

@@ -26,6 +26,7 @@
 #include "api/clipboard/clipboard.h"
 #include "api/res/res.h"
 #include "api/server/server.h"
+#include "api/net/net.h"
 #include "api/custom/custom.h"
 
 
@@ -85,10 +86,10 @@ map<string, router::NativeMethod> methodMap = {
     {"computer.getOSInfo", computer::controllers::getOSInfo},
     {"computer.getCPUInfo", computer::controllers::getCPUInfo},
     {"computer.getDisplays", computer::controllers::getDisplays},
-    {"computer.getDiskInfo", computer::controllers::getDiskInfo},
+    {"computer.getDisks", computer::controllers::getDisks},
     {"computer.getMousePosition", computer::controllers::getMousePosition},
     {"computer.getHostname", computer::controllers::getHostname},
-    { "computer.getUUID", computer::controllers::getUUID },
+    {"computer.getMachineId", computer::controllers::getMachineId},
     {"computer.setMousePosition", computer::controllers::setMousePosition},
     {"computer.setMouseGrabbing", computer::controllers::setMouseGrabbing},
     {"computer.sendKey", computer::controllers::sendKey},
@@ -133,7 +134,7 @@ map<string, router::NativeMethod> methodMap = {
     {"os.getEnv", os::controllers::getEnv},
     {"os.setEnv", os::controllers::setEnv},
     {"os.getEnvs", os::controllers::getEnvs},
-    {"os.getLocale", os::controllers::getLocale},
+    {"os.getLocaleInfo", os::controllers::getLocaleInfo},
     {"os.showOpenDialog", os::controllers::showOpenDialog},
     {"os.showFolderDialog", os::controllers::showFolderDialog},
     {"os.showSaveDialog", os::controllers::showSaveDialog},
@@ -175,6 +176,8 @@ map<string, router::NativeMethod> methodMap = {
     {"server.mount", server::controllers::mount},
     {"server.unmount", server::controllers::unmount},
     {"server.getMounts", server::controllers::getMounts},
+    // Neutralino.net
+    {"net.request", net::controllers::request},
     // Neutralino.custom
     {"custom.getMethods", custom::controllers::getMethods},
     // {"custom.add", custom::controllers::add} // Sample custom method
