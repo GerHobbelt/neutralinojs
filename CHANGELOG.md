@@ -6,6 +6,8 @@ rename `Unreleased` topic with the new version tag. Finally, create a new `Unrel
 
 ## Unreleased
 
+## v6.7.0
+
 ### API: Input device simulation and handling
 New functions were added to the `computer` namespace to update the mouse position, confine the mouse cursor within the window, and simulate keyboard events. These functions work on Windows and macOS, but only work under the X windowing system on Linux (or FreeBSD). On Wayland, these functions will throw `NE_CO_UNLTOSC`, `NE_CO_UNLTOMG`, or `NE_CO_UNLTOSK` error messages.
 
@@ -18,19 +20,19 @@ await Neutralino.computer.sendKey(38)
 
 // Simulate Ctrl + V keyboard shortcut on GNU/Linux:
 await Neutralino.computer.sendKey(105, 'down')    // Hold right control
-await Neutralino.computer.sendKey(47, 'down')     // Hold letter 'v' 
-await Neutralino.computer.sendKey(47, 'up')       // Release letter 'v'
+await Neutralino.computer.sendKey(55, 'down')     // Hold letter 'v' 
+await Neutralino.computer.sendKey(55, 'up')       // Release letter 'v'
 await Neutralino.computer.sendKey(105, 'up')      // Release right control
 ```
 
 ### API: os
-- Add `useTemplateIcon: bool` option to `os.setTray(options)` for activating adaptive tray icon with the current color-scheme.
+- Add `useTemplateIcon: bool` option to `os.setTray(options)` for activating adaptive tray icon with the current color-scheme on macOS.
 
 ### Improvements/bugfixes
-- Display app icon properly with the `os.showNotification()` function when the app is launched from a Mac app bundle.
+- Display the app icon properly with the `os.showNotification()` function when the app is launched from a Mac app bundle.
 - Fix the window-ordering issue with `window.focus()` on macOS.
-- Auto-focus the app window when the Mac dock app icon was clicked.
-- Write full C++ exceptions to the terminal to improve the framework bug-reporting experience.
+- Auto-focus the app window when the Mac dock app icon is clicked.
+- Write full C++ exception messages to the terminal to improve the framework-related bug-reporting experience.
 
 ## v6.5.0
 
