@@ -15,6 +15,8 @@
 #include <functional>
 #include <atomic>
 #include <climits>
+#include <algorithm>
+#include <clocale>
 
 #include "resources.h"
 #include "lib/tinyprocess/process.hpp"
@@ -257,6 +259,77 @@ bool updateSpawnedProcess(const os::SpawnedProcessEvent &evt) {
     return true;
 }
 
+string __getLocaleName() {
+    string locale;
+
+    #if defined(_WIN32)
+    wchar_t localeName[LOCALE_NAME_MAX_LENGTH] = {0};
+    if(GetUserDefaultLocaleName(localeName, LOCALE_NAME_MAX_LENGTH) > 0) {
+        locale = helpers::wstr2str(localeName);
+    }
+    #elif defined(__APPLE__)
+    id currentLocale = ((id (*)(id, SEL))objc_msgSend)(
+        "NSLocale"_cls, "currentLocale"_sel);
+    id localeIdentifier = ((id (*)(id, SEL))objc_msgSend)(
+        currentLocale, "localeIdentifier"_sel);
+    if(localeIdentifier != nullptr) {
+        const char *localeIdentifierStr = ((const char * (*)(id, SEL))objc_msgSend)(
+            localeIdentifier, "UTF8String"_sel);
+        if(localeIdentifierStr != nullptr) {
+            locale = string(localeIdentifierStr);
+        }
+    }
+    #else
+    const char *envLocale = getenv("LC_ALL");
+    if(envLocale == nullptr || strlen(envLocale) == 0) {
+        envLocale = getenv("LC_MESSAGES");
+    }
+    if(envLocale == nullptr || strlen(envLocale) == 0) {
+        envLocale = getenv("LANG");
+    }
+    if(envLocale != nullptr) {
+        locale = string(envLocale);
+    }
+    #endif
+
+    if(locale.empty()) {
+        const char *currentLocale = setlocale(LC_ALL, nullptr);
+        locale = currentLocale == nullptr ? "" : string(currentLocale);
+    }
+    return locale;
+}
+
+os::LocaleInfo __parseLocaleInfo(string localeName) {
+    size_t encodingIndex = localeName.find('.');
+    if(encodingIndex != string::npos) {
+        localeName = localeName.substr(0, encodingIndex);
+    }
+
+    size_t modifierIndex = localeName.find('@');
+    if(modifierIndex != string::npos) {
+        localeName = localeName.substr(0, modifierIndex);
+    }
+
+    replace(localeName.begin(), localeName.end(), '_', '-');
+
+    os::LocaleInfo localeInfo;
+    localeInfo.locale = localeName;
+
+    vector<string> localeParts = helpers::split(localeName, '-');
+    if(localeParts.size() > 0) {
+        localeInfo.language = localeParts[0];
+    }
+    if(localeParts.size() > 1) {
+        localeInfo.region = localeParts[localeParts.size() - 1];
+    }
+
+    return localeInfo;
+}
+
+os::LocaleInfo getLocale() {
+    return __parseLocaleInfo(__getLocaleName());
+}
+
 string getPath(const string &name) {
     string path = "";
     if(name == "config")
@@ -309,6 +382,16 @@ string getEnv(const string &key) {
     char *value;
     value = getenv(key.c_str());
     return value == nullptr ? "" : string(value);
+    #endif
+}
+
+bool setEnv(const string &key, const string &value) {
+    #if defined(_WIN32)
+    wstring wideKey = helpers::str2wstr(key);
+    wstring wideValue = helpers::str2wstr(value);
+    return _wputenv_s(wideKey.c_str(), wideValue.c_str()) == 0;
+    #else
+    return setenv(key.c_str(), value.c_str(), 1) == 0;
     #endif
 }
 
@@ -455,6 +538,25 @@ json getEnv(const json &input) {
     return output;
 }
 
+json setEnv(const json &input) {
+    json output;
+    const auto missingRequiredField = helpers::missingRequiredField(input, {"key", "value"});
+    if(missingRequiredField) {
+        output["error"] = errors::makeMissingArgErrorPayload(missingRequiredField.value());
+        return output;
+    }
+    string key = input["key"].get<string>();
+    string value = input["value"].get<string>();
+
+    if(os::setEnv(key, value)) {
+        output["success"] = true;
+    }
+    else {
+        output["error"] = errors::makeErrorPayload(errors::NE_RT_NATRTER);
+    }
+    return output;
+}
+
 json getEnvs(const json &input) {
     json output;
     #if defined(__linux__) || defined(__FreeBSD__) || defined(__APPLE__)
@@ -485,6 +587,20 @@ json getEnvs(const json &input) {
     }
     FreeEnvironmentStrings((LPWCH) envsO);
     #endif
+    output["success"] = true;
+    return output;
+}
+
+json getLocale(const json &input) {
+    json output;
+    os::LocaleInfo localeInfo = os::getLocale();
+
+    json retVal;
+    retVal["locale"] = localeInfo.locale;
+    retVal["language"] = localeInfo.language;
+    retVal["region"] = localeInfo.region;
+
+    output["returnValue"] = retVal;
     output["success"] = true;
     return output;
 }
