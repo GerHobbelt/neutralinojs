@@ -27,6 +27,7 @@ enum StatusCode {
     NE_OS_INVKNPT,
     NE_OS_UNLTRAS,
     NE_OS_UNLTOUV,
+    NE_OS_CMDNALW,
     // computer
     NE_CO_UNLTOSC,
     NE_CO_UNLTOMG,
@@ -53,6 +54,7 @@ enum StatusCode {
     NE_FS_ACSFAIL,
     NE_FS_CHMDERR,
     NE_FS_CHWNERR,
+    NE_FS_SCOPERR,
     // window
     NE_WI_UNBSWSR,
     // router

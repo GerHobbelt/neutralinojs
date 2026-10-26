@@ -91,6 +91,13 @@
         "type": "string"
       }
     },
+    "commandAllowList": {
+      "type": "array",
+      "description": "An array of shell-command programs that can be executed through 'os.execCommand' and 'os.spawnProcess'. When this option is set with one or more entries, the framework rejects any command whose program name doesn't match an entry with the 'NE_OS_CMDNALLW' error. If the list is empty or omitted, no restriction is applied. Patterns support the '*' and '?' wildcards (applied only to the program's executable name — argv[0] — not the full command line). The command is parsed with simple shell-quote rules; unquoted shell metacharacters (';|&><$`(){}' and newline) reject the command outright so 'os.allowCommands' cannot be used to run piped/redirected commands. \n\n { \n   \"os\": { \n     \"allowCommands\": [ \n       \"git\", \n       \"node\", \n       \"python3 *\" \n     ] \n   } \n } \n\n A list containing only '*' (or any pattern that matches everything) behaves like 'no restriction' — equivalent to omitting the option.",
+      "items": {
+        "type": "string"
+      }
+    },
     "globalVariables": {
       "type": "object",
       "description": "A key-value-based JavaScript object of custom global variables. \n\n You can make custom global variables too via 'neutralino.config.json', as shown below. \n\n \"globalVariables\": { \n   \"TEST\": \"Test Value\" \n } \n\n The above custom global variable's value can be accessed with 'NL_TEST'. You can set any data type for custom global variables. Look at the following examples. \n\n \"globalVariables\": { \n   \"TEST_1\": 1, \n   \"TEST_2\": null, \n   \"TEST_3\": 3.5, \n   \"TEST_4\": [3, 5, 4, 5], \n   \"TEST_5\": { \n     \"key\": \"value\", \n     \"anotherKey\": 100 \n   } \n } \n\n Avoid overriding predefined global variables. \n\n Learn more about this option here: \n https://github.com/neutralinojs/neutralinojs.github.io/blob/main/docs/api/global-variables.md#custom-global-variables"
@@ -109,6 +116,21 @@
         "serverHeaders": {
           "type": "object",
           "description": "Custom headers for the static server and Websocket handshake process. For example, the following configuration sends a custom header with every outgoing HTTP response. \n\n { \n   \"serverHeaders\": { \n     \"Test-Header-Option\": \"Value\" \n   } \n }"
+        }
+      }
+    },
+    "filesystem": {
+      "type": "object",
+      "description": "Filesystem-related configuration options.",
+      "properties": {
+        "scopes": {
+          "type": "object",
+          "description": "A map of allowed filesystem paths to their access mode. Each key is an absolute filesystem path (or a path containing 'NL_PATH' / 'NL_OS_*PATH' placeholders) and each value is one of 'read', 'write' or 'read-write'. A scope can point to a file (only that exact file is allowed) or to a directory (anything within that directory is allowed). When this option is set, the framework rejects any filesystem API call whose target path is not covered by an entry whose mode permits that operation with the 'NE_FS_SCOPERR' error. If the map is empty or omitted, no restriction is applied. \n\n { \n   \"filesystem\": { \n     \"scopes\": { \n       \"/home/user/documents\": \"read\", \n       \"/tmp\": \"read-write\", \n       \"${NL_PATH}/.tmp/notes.txt\": \"write\" \n     } \n   } \n }",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["read", "write", "read-write"],
+            "description": "Access mode for the path. 'read' allows reading operations only, 'write' allows writing operations only, 'read-write' allows both."
+          }
         }
       }
     },

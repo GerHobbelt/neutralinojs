@@ -21,6 +21,11 @@
         "writeToLogFile": true
     },
     "nativeBlockList": [],
+    "commandAllowList": ["node"],
+    "filesystemScopes": {
+        "${NL_PATH}": "read-write",
+        "${NL_OSHOMEPATH}": "read"
+    },
     "globalVariables": {
         "TEST1": "Hello",
         "TEST2": [2, 4, 5],
@@ -28,6 +33,10 @@
             "value1": 10,
             "value2": {}
         }
+    },
+    "systemEnvs": {
+        "ENVTEST1": "Hello",
+        "ENVTEST2": "World"
     },
     "modes": {
         "window": {
